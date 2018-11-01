@@ -50,12 +50,11 @@ while True:
             msg_type = msg.get_type()
             msg_dict = msg.to_dict()
 #             if msg_type == 'HEARTBEAT':
-            if msg_type == 'PARAM_VALUE':
 
-                print(msg_dict)
-    #             print(msg.to_json())
-    #             print(msg._fieldnames)
-                print(msg)
-    #             msg_sys = msg.get_srcSystem()
-    #             msg_comp = msg.get_srcComponent()
+            print(msg_dict)
+#             print(msg.to_json())
+#             print(msg._fieldnames)
+            print(msg)
+#             msg_sys = msg.get_srcSystem()
+#             msg_comp = msg.get_srcComponent()
 
