@@ -1,6 +1,10 @@
 # pymavlink-bindings
 
-bash ./build.sh
+git clone https://github.com/APRAND/pymavlink-bindings.git
+
+cd pymavlink-bindings
+
+bash ./setup.sh
 
 pip3 install .
 
