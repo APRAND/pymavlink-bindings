@@ -1,4 +1,6 @@
 # pymavlink-bindings
+
+bash ./build.sh
 pip3 install .
 
 
