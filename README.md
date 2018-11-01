@@ -6,6 +6,8 @@ cd pymavlink-bindings
 
 bash ./setup.sh
 
+pip3 install -r requirements.txt
+
 pip3 install .
 
 
