@@ -28,9 +28,15 @@ class CMakeBuild(build_ext):
             cmake_version = LooseVersion(re.search(r'version\s*([\d.]+)', out.decode()).group(1))
             if cmake_version < '3.1.0':
                 raise RuntimeError("CMake >= 3.1.0 is required on Windows")
-
+        
+        # TODO:
         # Generate c++ headders
         # Generate python includes
+        # bashCommand = "cwm --rdf test.rdf --ntriples > test.nt"
+        # import subprocess
+        # process = subprocess.Popen(bashCommand.split(), stdout=subprocess.PIPE)
+        # output, error = process.communicate()
+        
         # Write out the python bindings for the current message definitions
         generate_bindings.generate()
 
