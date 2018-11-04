@@ -1,2 +1,3 @@
 future
 lxml
+scandir; python_version < '3.5'

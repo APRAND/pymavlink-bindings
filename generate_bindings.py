@@ -1,6 +1,11 @@
 import os
 import sys
 
+try:
+    from os import scandir
+except ImportError:
+    from scandir import scandir
+
 # setup up mavlink
 os.environ["MAVLINK20"] = "1"  # force MAVLink v2 for the moment
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "mavlink"))
@@ -13,36 +18,45 @@ def auto_gen_message(fid):
 
 
 def get_c_field_types(mavmap):
-    mavlink_headders_base = os.path.join(os.getcwd(), 'generated', 'mavlink')
-    subfolders = [f.path for f in os.scandir(mavlink_headders_base) if f.is_dir() ]
+    mavlink_headders_base = os.path.join(os.getcwd(), "generated", "mavlink")
+    subfolders = [f.path for f in scandir(mavlink_headders_base) if f.is_dir()]
     print(subfolders)
     for msg_type in mavmap.keys():
         msg_name = mavmap[msg_type].name
         mavmap[msg_type].types = {}
         for folder in subfolders:
-            file_path = os.path.join(folder, 'mavlink_msg_{name_lower}.h'.format(name_lower=msg_name.lower()))
+            file_path = os.path.join(
+                folder, "mavlink_msg_{name_lower}.h".format(name_lower=msg_name.lower())
+            )
             if os.path.isfile(file_path):
-                with open(file_path, 'r+') as fid:
+                exit = True
+                with open(file_path, "r+") as fid:
                     for line in fid:
-                        if "MAVPACKED(" in line:
-                            fid.readline()
+                        if "typedef struct __mavlink" in line:
                             exit = False
-                            while not exit:
-                                line = fid.readline()
-                                if "}) mavlink" in line:
-                                    exit = True
-                                else:
-                                    line = line.strip()
-                                    line = line.split(' ')
-                                    field_type = line[0]
-                                    field_name = line[1].rstrip(';').rstrip(']').split('[')
-                                    if len(field_name) == 2:
-                                        array_size = field_name[1]
-                                        field_name = field_name[0]
-                                    else:
-                                        array_size = 0
-                                        field_name = field_name[0]
-                                    mavmap[msg_type].types[field_name] = {'type':field_type, 'array_size':int(array_size)}
+                            continue
+                        elif "}) mavlink" in line:
+                            exit = True
+                            break
+                        elif not exit:
+                            line = line.strip()
+                            line = line.split(" ")
+                            field_type = line[0]
+                            field_name = (
+                                line[1].rstrip(";").rstrip("]").split("[")
+                            )
+                            if len(field_name) == 2:
+                                array_size = field_name[1]
+                                field_name = field_name[0]
+                            else:
+                                array_size = 0
+                                field_name = field_name[0]
+                            mavmap[msg_type].types[field_name] = {
+                                "type": field_type,
+                                "array_size": int(array_size),
+                            }
+                        else:
+                            continue
     return mavmap
 
 
@@ -143,56 +157,96 @@ def generate_mavlink_message_types(fid, mavmap):
         mavlink_message_class = """
 class MAVLink_{name_lower}_message : public MAVLink_message {{
 public:
-    MAVLink_{name_lower}_message(uint32_t msgId, uint8_t incompat_flags, uint8_t compat_flags, uint8_t mlen, uint8_t _seq, uint8_t srcSystem, uint8_t srcComponent, """.format(name_lower=msg_name.lower())
+    MAVLink_{name_lower}_message(uint32_t msgId, uint8_t incompat_flags, uint8_t compat_flags, uint8_t mlen, uint8_t _seq, uint8_t srcSystem, uint8_t srcComponent, """.format(
+            name_lower=msg_name.lower()
+        )
         fid.write(mavlink_message_class)
         end = None
         for field in mavmap[msg_type].fieldnames:
             if end:
-                fid.write(', ')
-            array_size = mavmap[msg_type].types[field]['array_size']
+                fid.write(", ")
+            array_size = mavmap[msg_type].types[field]["array_size"]
             if array_size:
-                fid.write('std::vector<{t}> {f}'.format(t=mavmap[msg_type].types[field]['type'], f=field))
+                fid.write(
+                    "std::vector<{t}> {f}".format(
+                        t=mavmap[msg_type].types[field]["type"], f=field
+                    )
+                )
             else:
-                fid.write('{t} {f}'.format(t=mavmap[msg_type].types[field]['type'], f=field))
+                fid.write(
+                    "{t} {f}".format(t=mavmap[msg_type].types[field]["type"], f=field)
+                )
             end = True
-        fid.write(') :\n')
-        fid.write('        MAVLink_message("{name_upper}", msgId, incompat_flags, compat_flags, mlen, _seq, srcSystem, srcComponent) {{\n'.format(name_upper=msg_name.upper()))
+        fid.write(") :\n")
+        fid.write(
+            '        MAVLink_message("{name_upper}", msgId, incompat_flags, compat_flags, mlen, _seq, srcSystem, srcComponent) {{\n'.format(
+                name_upper=msg_name.upper()
+            )
+        )
         for field in mavmap[msg_type].fieldnames:
-            if ((mavmap[msg_type].types[field]['array_size'] != 0) and (mavmap[msg_type].types[field]['type'] == 'char')):
-                fid.write('        _{f} = {f};\n'.format(f=field))
-                fid.write('        std::string {f}_s({f}.begin(),{f}.end());\n'.format(f=field))
-                fid.write('        rtrim({f}_s);\n'.format(f=field))
+            if (mavmap[msg_type].types[field]["array_size"] != 0) and (
+                mavmap[msg_type].types[field]["type"] == "char"
+            ):
+                fid.write("        _{f} = {f};\n".format(f=field))
+                fid.write(
+                    "        std::string {f}_s({f}.begin(),{f}.end());\n".format(
+                        f=field
+                    )
+                )
+                fid.write("        rtrim({f}_s);\n".format(f=field))
             else:
-                fid.write('        {f} = {f};\n'.format(f=field))
-        fid.write('        _fieldnames = {')
+                fid.write("        {f} = {f};\n".format(f=field))
+        fid.write("        _fieldnames = {")
         end = None
         for field in mavmap[msg_type].fieldnames:
             if end:
-                fid.write(', ')
+                fid.write(", ")
             fid.write('"{f}"'.format(f=field))
             end = True
-        fid.write('};\n')
+        fid.write("};\n")
         fid.write('        _dict["mavpackettype"] = _type;\n')
         for field in mavmap[msg_type].fieldnames:
-            if ((mavmap[msg_type].types[field]['array_size'] != 0) and (mavmap[msg_type].types[field]['type'] == 'char')):
+            if (mavmap[msg_type].types[field]["array_size"] != 0) and (
+                mavmap[msg_type].types[field]["type"] == "char"
+            ):
                 fid.write('        _dict["{f}"] = {f}_s;\n'.format(f=field))
             else:
                 fid.write('        _dict["{f}"] = {f};\n'.format(f=field))
-        fid.write('       _stream  << _type;')
-#             _stream  << _type << " {" << "type : " << std::to_string(type) <<", "<< "autopilot : "<< std::to_string(autopilot) <<", "<< "base_mode : " << std::to_string(base_mode) << ", " << "custom_mode : "<< std::to_string(custom_mode) <<", "<< "system_status : " << std::to_string(system_status) << ", " << "mavlink_version : "<< std::to_string(mavlink_version) << "}";
-        fid.write('    }\n')
-        fid.write('    ~MAVLink_{name_lower}_message() {{ }}\n'.format(name_lower=msg_name.lower()))
+        fid.write("       _stream  << _type;")
+        #             _stream  << _type << " {" << "type : " << std::to_string(type) <<", "<< "autopilot : "<< std::to_string(autopilot) <<", "<< "base_mode : " << std::to_string(base_mode) << ", " << "custom_mode : "<< std::to_string(custom_mode) <<", "<< "system_status : " << std::to_string(system_status) << ", " << "mavlink_version : "<< std::to_string(mavlink_version) << "}";
+        fid.write("    }\n")
+        fid.write(
+            "    ~MAVLink_{name_lower}_message() {{ }}\n".format(
+                name_lower=msg_name.lower()
+            )
+        )
         for field in mavmap[msg_type].fieldnames:
-            array_size = mavmap[msg_type].types[field]['array_size']
-            field_type = mavmap[msg_type].types[field]['type']
-            if ((array_size != 0) and (field_type == 'char')):
-                fid.write('    std::vector<{t}> _{f};\n'.format(t=mavmap[msg_type].types[field]['type'], f=field))
-                fid.write('    std::string {f}_s;\n'.format(t=mavmap[msg_type].types[field]['type'], f=field))
+            array_size = mavmap[msg_type].types[field]["array_size"]
+            field_type = mavmap[msg_type].types[field]["type"]
+            if (array_size != 0) and (field_type == "char"):
+                fid.write(
+                    "    std::vector<{t}> _{f};\n".format(
+                        t=mavmap[msg_type].types[field]["type"], f=field
+                    )
+                )
+                fid.write(
+                    "    std::string {f}_s;\n".format(
+                        t=mavmap[msg_type].types[field]["type"], f=field
+                    )
+                )
             elif array_size:
-                fid.write('    std::vector<{t}> {f};\n'.format(t=mavmap[msg_type].types[field]['type'], f=field))
+                fid.write(
+                    "    std::vector<{t}> {f};\n".format(
+                        t=mavmap[msg_type].types[field]["type"], f=field
+                    )
+                )
             else:
-                fid.write('    {t} {f};\n'.format(t=mavmap[msg_type].types[field]['type'], f=field))
-        fid.write('};')
+                fid.write(
+                    "    {t} {f};\n".format(
+                        t=mavmap[msg_type].types[field]["type"], f=field
+                    )
+                )
+        fid.write("};")
 
 
 def generate_mavlink_parser_class(fid, mavmap):
@@ -226,33 +280,41 @@ def generate_switch_statement(mavmap, fid):
                 switch(msg.msgid) {"""
     fid.write(preamble)
     for msg_type in mavmap.keys():
-#         print(mavmap[msg_type].fieldnames)
         msg_name = mavmap[msg_type].name
         case_start = """
                     case MAVLINK_MSG_ID_{name}: {{
                         mavlink_{name_lower}_t {name_lower};
                         mavlink_msg_{name_lower}_decode(&msg, &{name_lower});
                         py::object ret = py::cast(""".format(
-                        name=msg_name, name_lower=msg_name.lower()
-                    )
-#         print(case_start)
+            name=msg_name, name_lower=msg_name.lower()
+        )
         fid.write(case_start)
         case = """
                             new MAVLink_{name_lower}_message(
                                 msg.msgid, msg.incompat_flags, msg.compat_flags, msg.len, msg.seq, msg.sysid, msg.compid,\n""".format(
-                name_lower=msg_name.lower()
-            )
+            name_lower=msg_name.lower()
+        )
         fid.write(case)
         end = None
         for field in mavmap[msg_type].fieldnames:
             if end:
-                fid.write(',\n')
-            array_size = mavmap[msg_type].types[field]['array_size']
+                fid.write(",\n")
+            array_size = mavmap[msg_type].types[field]["array_size"]
             if array_size:
-                fid.write('                                std::vector<{t}>({name_lower}.{field}, {name_lower}.{field} + {array_size})'.format(t=mavmap[msg_type].types[field]['type'], name_lower=msg_name.lower(), field=field, array_size=array_size))
+                fid.write(
+                    "                                std::vector<{t}>({name_lower}.{field}, {name_lower}.{field} + {array_size})".format(
+                        t=mavmap[msg_type].types[field]["type"],
+                        name_lower=msg_name.lower(),
+                        field=field,
+                        array_size=array_size,
+                    )
+                )
             else:
-                fid.write('                                {name_lower}.{field}'.format(
-                name_lower=msg_name.lower(), field=field))
+                fid.write(
+                    "                                {name_lower}.{field}".format(
+                        name_lower=msg_name.lower(), field=field
+                    )
+                )
             end = True
         case_end = """
                             )
@@ -302,32 +364,46 @@ PYBIND11_MODULE(MAVLink_binder, m) {
     for msg_type in mavmap.keys():
         msg_name = mavmap[msg_type].name
         pybind_dynamic_code = """
-    py::class_<MAVLink_{name_lower}_message, MAVLink_message>(m, "MAVLink_{name_lower}_message", py::dynamic_attr())\n""".format(name_lower=msg_name.lower())
+    py::class_<MAVLink_{name_lower}_message, MAVLink_message>(m, "MAVLink_{name_lower}_message", py::dynamic_attr())\n""".format(
+            name_lower=msg_name.lower()
+        )
         fid.write(pybind_dynamic_code)
-        fid.write('        .def(py::init<uint32_t, uint8_t, uint8_t, uint8_t, uint8_t, uint8_t, uint8_t, ')
+        fid.write(
+            "        .def(py::init<uint32_t, uint8_t, uint8_t, uint8_t, uint8_t, uint8_t, uint8_t, "
+        )
         end = None
         for field in mavmap[msg_type].fieldnames:
             if end:
-                fid.write(', ')
-            array_size = mavmap[msg_type].types[field]['array_size']
+                fid.write(", ")
+            array_size = mavmap[msg_type].types[field]["array_size"]
             if array_size:
-                fid.write('std::vector<{t}>'.format(t=mavmap[msg_type].types[field]['type']))
+                fid.write(
+                    "std::vector<{t}>".format(t=mavmap[msg_type].types[field]["type"])
+                )
             else:
-                fid.write(mavmap[msg_type].types[field]['type'])
+                fid.write(mavmap[msg_type].types[field]["type"])
             end = True
-        fid.write('>())\n')
+        fid.write(">())\n")
         end = None
         for field in mavmap[msg_type].fieldnames:
             if end:
-                fid.write('\n')
-            array_size = mavmap[msg_type].types[field]['array_size']
-            field_type = mavmap[msg_type].types[field]['type']
-            if ((array_size != 0) and (field_type == 'char')):
-                fid.write('        .def_readwrite("{field}", &MAVLink_{name_lower}_message::{field}_s)'.format(name_lower=msg_name.lower(), field=field))
+                fid.write("\n")
+            array_size = mavmap[msg_type].types[field]["array_size"]
+            field_type = mavmap[msg_type].types[field]["type"]
+            if (array_size != 0) and (field_type == "char"):
+                fid.write(
+                    '        .def_readwrite("{field}", &MAVLink_{name_lower}_message::{field}_s)'.format(
+                        name_lower=msg_name.lower(), field=field
+                    )
+                )
             else:
-                fid.write('        .def_readwrite("{field}", &MAVLink_{name_lower}_message::{field})'.format(name_lower=msg_name.lower(), field=field))
+                fid.write(
+                    '        .def_readwrite("{field}", &MAVLink_{name_lower}_message::{field})'.format(
+                        name_lower=msg_name.lower(), field=field
+                    )
+                )
             end = True
-        fid.write(';\n')
+        fid.write(";\n")
     fid.write("}")
 
 
@@ -338,22 +414,18 @@ def generate():
 
     # mavmap = {11011:mavmap[11011]}  # 41, 0, 186, 11011
 
-    # print(mavmap[1].fieldnames)
-    binding_code_file_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'src', 'mavlink_bindings.cpp')
-    print(binding_code_file_path)
-    with open(binding_code_file_path, 'w+') as fid:
+    binding_code_file_path = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "src", "mavlink_bindings.cpp"
+    )
+    with open(binding_code_file_path, "w+") as fid:
         auto_gen_message(fid)
         generate_imports(fid)
         generate_mavlink_headder_class(fid)
         generate_mavlink_message_class(fid)
         generate_mavlink_message_types(fid, mavmap)
         generate_mavlink_parser_class(fid, mavmap)
-    #     generate_switch_statement(mavmap, fid)
         generate_pybind_code(fid, mavmap)
 
-# we need to generate binding code for all of the python types
 
-
-if __name__ == '__main__':
+if __name__ == "__main__":
     generate()
-
