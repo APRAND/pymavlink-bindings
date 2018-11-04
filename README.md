@@ -1,7 +1,7 @@
 # pymavlink-bindings
 **[Work in progress]** 
 
-Reduce CPU useage wherever pymavlink is used. Works with MAVLinkv2 and Python3.
+Reduce CPU useage wherever pymavlink is used. Works with MAVLink / MAVLinkv2 and Python2.7+ / Python3.5+
 
 ## Setup
 
@@ -9,11 +9,9 @@ git clone https://github.com/APRAND/pymavlink-bindings.git
 
 cd pymavlink-bindings
 
-bash ./setup.sh
+pip2/3 install -r requirements.txt
 
-pip3 install -r requirements.txt
-
-pip3 install .
+pip2/3 install .
 
 ## Usage
 ```
